@@ -1,0 +1,173 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  password  String?
+  role      UserRole   @default(CUSTOMER)
+  points    Float      @default(0)
+  saldo     Float      @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  events       Event[]
+  transactions Transaction[]
+  reviews      Review[]
+  vouchers     Voucher[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  image       String?
+  category    String
+  location    String
+  address     String?
+  startDate   DateTime
+  endDate     DateTime
+  price       Float
+  capacity    Int
+  ticketsSold Int      @default(0)
+  status      EventStatus @default(UPCOMING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  // Relations
+  transactions Transaction[]
+  reviews      Review[]
+  vouchers     EventVoucher[]
+
+  @@index([category])
+  @@index([location])
+  @@index([status])
+  @@index([startDate])
+  @@map("events")
+}
+
+enum EventStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model Transaction {
+  id                    String   @id @default(cuid())
+  eventId               String
+  event                 Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity              Int
+  pricePerTicket        Float
+  originalTotalPrice    Float    // Price before discounts
+  pointsUsed            Float    @default(0)
+  voucherId             String?
+  voucher               Voucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  finalPrice            Float    // Price after discounts and points
+  paymentMethod         PaymentMethod?
+  paymentProofUrl       String?
+  status                TransactionStatus @default(WAITING_FOR_PAYMENT)
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  paymentExpiredAt      DateTime? // 2-hour countdown from creation
+  approvalDeadlineAt    DateTime? // 3-day deadline for admin approval/rejection
+  reviews               Review[]
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+enum TransactionStatus {
+  WAITING_FOR_PAYMENT
+  WAITING_FOR_ADMIN_CONFIRMATION
+  DONE
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  E_WALLET
+  CREDIT_CARD
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  rating        Int      @db.SmallInt
+  comment       String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([transactionId])
+  @@map("reviews")
+}
+
+model Voucher {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  discountAmount Float
+  isPercentage Boolean  @default(false)
+  maxUses     Int?
+  usedCount   Int      @default(0)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  // Relations
+  events       EventVoucher[]
+  transactions Transaction[]
+
+  @@index([code])
+  @@map("vouchers")
+}
+
+model EventVoucher {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  voucherId String
+  voucher   Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, voucherId])
+  @@index([eventId])
+  @@index([voucherId])
+  @@map("event_vouchers")
+}
